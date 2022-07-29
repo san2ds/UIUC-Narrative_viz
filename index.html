@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<!-- Load d3.js -->
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<style> rect {fill: lightblue; stroke: black; }</style>
+
+<!-- Create a div where the line chart will take place -->
+<div id="Labor_force_viz"></div>
+
+<script>
+
+    var margin = 100,
+        width = 400,
+        height = 400;
+    
+    var svg = d3.select("Labor_force_viz")
+                .append("svg")
+                    .attr("width", 400 - margin)
+                    .attr("height", 400 - margin);
+    
+    
+    svg.append("text")
+       .attr("transform", "translate(100,0)")
+       .attr("x", 50)
+       .attr("y", 50)
+       .attr("font-size", "24px")
+       .text("Labor Force Change");
+    
+    var xScale = d3.scaleBand().range([0, width]).padding(0.4),
+        yScale = d3.scaleLinear().range([height, 0]);
+    
+    var g = svg.append("g")
+               .attr("transform", "translate(" + 100 + "," + 100 + ")");
+    
+    d3.csv("laucnty21_10.csv", function(error, data) {
+        if (error) {
+            throw error;
+        }
+
+        state_selected = "CA"
+        data_state = data.filter(function(d) {
+            return d.State == state_selected; 
+        })
+        
+        xScale.domain(data_state.map(function(d) { return d.Year; }));
+        yScale.domain([0, d3.max(data_state, function(d) { return d.Labor_Force; })]);
+
+
+        g.append("g")
+         .attr("transform", "translate(0," + height + ")")
+         .call(d3.axisBottom(xScale))
+         .append("text")
+         .attr("y", height - 250)
+         .attr("x", width - 100)
+         .attr("text-anchor", "end")
+         .attr("stroke", "black")
+         .text("Year");
+
+        g.append("g")
+         .call(d3.axisLeft(yScale).tickFormat(function(d){
+             return  d;
+         })
+         .ticks(10))
+         .append("text")
+         .attr("transform", "rotate(-90)")
+         .attr("y", 6)
+         .attr("dy", "-5.1em")
+         .attr("text-anchor", "end")
+         .attr("stroke", "black")
+         .text("Total Labor Force");
+
+       /*
+         g.selectAll()
+         .data(data_state)
+         .enter().append("path")
+         //.attr("class", "bar")
+         .attr("x", function(d) { return xScale(d.Year); })
+         .attr("y", function(d) { return yScale(d.value); })
+         .attr("width", xScale.bandwidth())
+         .attr("height", function(d) { return height - yScale(d.value); });
+        */
+       
+         svg
+            .append("path")
+            .datum(data_state)
+            .attr("fill", "none")
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 1.5)
+            .attr("d", d3.line()
+                .x(function(d) { return x(d.Year) })
+                .y(function(d) { return y(d.Labor_Force) })
+            );
+        }
+    );
+
+
+</script>
