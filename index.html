@@ -3,96 +3,995 @@
 
 <!-- Load d3.js -->
 <script src="https://d3js.org/d3.v5.min.js"></script>
-<style> rect {fill: lightblue; stroke: black; }</style>
+<script src="https://rawgit.com/susielu/d3-annotation/master/d3-annotation.min.js"></script>
+<style> rect {fill: lightblue; stroke: black; }
+div.tooltip {
+  position: absolute;
+  text-align: center;
+  width: 80px;
+  height: 45px;
+  padding: .2px;
+  font: 10px sans-serif;
+  background: lightsteelblue;
+  border: 10px;
+  border-radius: 8px;
+  pointer-events: none;
+}
 
+</style>
+<body onload='init(0)'>
+<button onclick='init(1)'>Main Page</button>    
+<button onclick="showLineChart()">By State Change</button>
+<button onclick="showScatterPlot()">Unemployment Rate</button> 
 <!-- Create a div where the line chart will take place -->
+<div id="dropmenu"  align=center></div>
+
 <div id="Labor_force_viz"></div>
 
-<script>
 
-    var margin = 100,
-        width = 400,
-        height = 400;
+<script>
+    var margin = {top: 80, right: 180, bottom: 80, left: 180},
+        width = 960 - margin.left - margin.right,
+        height = 500 - margin.top - margin.bottom;    
     
-    var svg = d3.select("Labor_force_viz")
+    var svg = d3.select("#Labor_force_viz")
                 .append("svg")
-                    .attr("width", 400 - margin)
-                    .attr("height", 400 - margin);
+                 .attr("width", width + margin.left + margin.right)
+                 .attr("height", height + margin.top + margin.bottom);  
+                 
+    var selector = d3.select("#dropmenu")
+    	            .append("select")
+    	            .attr("id","dropdown");
+
+    const elements = ["2021", "2020", "2019", "2018", "2017", "2016",
+                      "2015", "2014", "2013", "2012", "2011"];   
+                
+    const data_state_2 = ["CA", "CO", "FL", "GA","IA", "ID", "IL", "IN", "KY",
+                    "LA", "MA", "MN", "MO", "MS", "NC", "ND", "NE", "NY",
+                    "OH", "OK", "PA", "SC", "TX", "TN", "VA", "VT",
+                    "WA", "WI"];
+
     
-    
+
+async function init(entryCount){
+    svg.selectAll('*').remove();
+    selector.selectAll('*').remove();
+
+    selectedYear = elements[0];    
+    //selectedState = data_state_2[0];
+
     svg.append("text")
        .attr("transform", "translate(100,0)")
-       .attr("x", 50)
+       .attr("x", 60)
        .attr("y", 50)
        .attr("font-size", "24px")
-       .text("Labor Force Change");
+       .text("Labor Force Change for Year - " + selectedYear);
     
-    var xScale = d3.scaleBand().range([0, width]).padding(0.4),
-        yScale = d3.scaleLinear().range([height, 0]);
+
+    data = await d3.csv("https://raw.githubusercontent.com/san2ds/san2ds.github.io/main/laucnty21_10.csv");
     
-    var g = svg.append("g")
-               .attr("transform", "translate(" + 100 + "," + 100 + ")");
+    if (!data) {
+            error = "Error in file read";
+            console.log(error);
+            throw error;
+        };
+
+    var total_labor_force_change = [];
+
+    total_labor_force_change = await loadData(selectedYear, data);
     
-    d3.csv("laucnty21_10.csv", function(error, data) {
-        if (error) {
+    //console.log(total_labor_force_change);
+
+    var xScale = d3.scaleBand().range([0, width ]),
+        yScale = d3.scaleLinear().range([height, 0]); 
+
+    xScale.domain(data_state_2);
+    yScale.domain([d3.min(total_labor_force_change)*1.4, d3.max(total_labor_force_change)*1.4]);
+    
+
+   // console.log(d3.max(total_labor_force_change));
+
+
+
+      svg.append("g")
+         .attr("transform", "translate(" + margin.left + "," + margin.top + ")")       
+         .call(d3.axisLeft(yScale).tickFormat(function(d){
+             return  d;
+         })
+         .ticks(10)
+         .tickFormat(d3.format("~s")))
+         .append("text")
+         .attr("transform", "rotate(-90)")
+         .attr("y", 3)
+         .attr("dy", "-5.1em")
+         .attr("text-anchor", "end")
+         .attr("stroke", "black")
+         .text("Labor Force Change");
+
+  
+       
+
+        svg.append("g")
+               .attr("transform", "translate("+ margin.left +", "+ 420 +")")
+               .call(d3.axisBottom(xScale));
+         
+         //console.log(yScale(0));
+         //console.log(Math.abs(height - yScale(0)));
+
+         svg.append("g")
+               .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+               .selectAll("rect")
+               .data(total_labor_force_change)
+               .enter().append("rect")
+               .attr("class", function(d){return d < 0 ? "negative" : "positive";})
+               .attr("x", function(d,i) { return xScale(data_state_2[i]); })
+               .attr("y", function(d) { return yScale(0); })
+               .attr("width", xScale.bandwidth())
+               .attr("height", function(d) { return Math.abs(height - yScale(0)); })
+               .style("fill", function(d){
+                    return d > 0 ? "green" : "red";
+               });
+
+         // Animation
+        svg.selectAll("rect")
+            .transition()
+             .duration(1200)
+             .attr("y", function(d) { return yScale(Math.max(0,d)); })
+             .attr("height", function(d) { return Math.abs(yScale(d) - yScale(0));  })
+             .delay(100);
+    
+    var idx =  await findIndex(total_labor_force_change, "max");
+     
+    //console.log(idx);
+    //console.log(data_state_2[idx]);
+    //console.log(data_state_2[d3.maxIndex(total_labor_force_change)]);
+
+    var highestIncreaseAnnotate = [
+        {
+            note: {
+                label: "Total increase in labor Force for " + selectedYear + " for State " + data_state_2[idx] + " is " + d3.max(total_labor_force_change) + ".",
+                title: "Highest Labor Force Increase"
+           },
+            connector: {
+                end: "arrow",
+                type: "curve",
+                points: 3,
+                lineType: "horizontal"
+            },
+            color: ["blue"],
+            x: xScale(data_state_2[idx]),
+            y: yScale(Math.max(0,d3.max(total_labor_force_change))),
+            dy: 60,
+            dx: 150  
+        }
+    ];
+         
+    var makeHighestAnnotation = d3.annotation().annotations(highestIncreaseAnnotate);
+
+    svg.append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+        .call(makeHighestAnnotation);
+
+    var idx =  await findIndex(total_labor_force_change, "min");
+     
+    var highestDecreaseAnnotate = [
+         {
+             note: {
+                 label: "Total decrease in labor Force for " + selectedYear + " for State " + data_state_2[idx] + " is " + d3.min(total_labor_force_change) + ".",
+                 title: "Highest Labor Force Decrease"
+            },
+             connector: {
+                 end: "arrow",
+                 type: "curve",
+                 points: 3,
+                 lineType: "horizontal"
+             },
+             color: ["purple"],
+             x: xScale(data_state_2[idx]),
+             y: yScale(Math.max(0,d3.min(total_labor_force_change))),
+             dy: -60,
+             dx: -50  
+         }
+     ];
+          
+     var makeLowestAnnotation = d3.annotation().annotations(highestDecreaseAnnotate);
+ 
+     svg.append("g")
+         .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+         .call(makeLowestAnnotation);
+ 
+
+
+   // Dropdown selector value change      
+      
+    	selector.on("change", async function(d){
+        	selection = document.getElementById("dropdown");
+            new_labor_force_change = await loadData(selection.value, data);
+            //console.log(new_labor_force_change);
+            svg.selectAll('*').remove();
+
+    
+            svg.append("text")
+                .attr("transform", "translate(100,0)")
+                .attr("x", 60)
+                .attr("y", 50)
+                .attr("font-size", "24px")
+                .text("Labor Force Change for Year - " + selection.value);
+    
+            yScale.domain([d3.min(new_labor_force_change)*1.4, d3.max(new_labor_force_change)*1.4]);
+
+        
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")")       
+                .call(d3.axisLeft(yScale).tickFormat(function(d){
+                     return  d;
+                    })
+                 .ticks(10)
+                 .tickFormat(d3.format("~s")))
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 3)
+                .attr("dy", "-5.1em")
+                .attr("text-anchor", "end")
+                .attr("stroke", "black")
+                .text("Labor Force Change");
+
+   
+
+            svg.append("g")
+               .attr("transform", "translate("+ margin.left +", "+ 420 +")")
+                 .call(d3.axisBottom(xScale));
+         
+          
+
+            svg.append("g")
+               .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+               .selectAll("rect")
+               .data(new_labor_force_change)
+               .enter().append("rect")
+               .attr("class", function(d){return d < 0 ? "negative" : "positive";})
+               .attr("x", function(d,i) { return xScale(data_state_2[i]); })
+               .attr("y", function(d) { return yScale(0); })
+               .attr("width", xScale.bandwidth())
+               .attr("height", function(d) { return Math.abs(height - yScale(0)); })
+               .style("fill", function(d){
+                    return d > 0 ? "green" : "red";
+               });
+
+            // Animation
+            svg.selectAll("rect")
+                .transition()
+                 .duration(1200)
+                .attr("y", function(d) { return yScale(Math.max(0,d)); })
+                .attr("height", function(d) { return Math.abs(yScale(d) - yScale(0));  })
+            //    .delay(function(d,i){console.log(i) ; return(i*100)});
+                .delay(100);
+
+            var idx_n =  await findIndex(new_labor_force_change, "max");
+     
+            inc_text_y_loc = [60,60,60,60,10,60,10,60,60,60,60];
+            inc_text_x_loc = [150,150,150,150,-50,150,-50,150,150,150,150];
+
+            highestIncreaseAnnotate = [
+                {
+                note: {
+                    label: "Total increase in labor Force for " + selection.value + " for State " + data_state_2[idx_n] + " is " + d3.max(new_labor_force_change) + ".",
+                    title: "Highest Labor Force Increase"
+                },
+                connector: {
+                    end: "arrow",
+                    type: "curve",
+                    points: 3,
+                    lineType: "horizontal"
+                },
+                color: ["blue"],
+                x: xScale(data_state_2[idx_n]),
+                y: yScale(Math.max(0,d3.max(new_labor_force_change))),
+                dy: inc_text_y_loc[selection.value - 2011],
+                dx: inc_text_x_loc[selection.value - 2011]  
+                }
+            ];
+         
+            makeHighestAnnotation = d3.annotation().annotations(highestIncreaseAnnotate);
+
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+                .call(makeHighestAnnotation);
+
+            idx_n =  await findIndex(new_labor_force_change, "min");
+
+            dec_text_y_loc = [-60,-140,-60,-60,-140,-140,-140,-140,-140,160,-60];
+            dec_text_x_loc = [-50,-150,-50,-50,50,50,50,-150,-150,25,-50];
+
+     
+            highestDecreaseAnnotate = [
+                {
+                note: {
+                     label: "Total decrease in labor Force for " + selection.value + " for State " + data_state_2[idx_n] + " is " + d3.min(new_labor_force_change) + ".",
+                    title: "Highest Labor Force Decrease"
+                },
+                connector: {
+                    end: "arrow",
+                    type: "curve",
+                    points: 3,
+                    lineType: "horizontal"
+                },
+                color: ["purple"],
+                x: xScale(data_state_2[idx_n]),
+                y: yScale(Math.max(0,d3.min(new_labor_force_change))),
+                dy: dec_text_y_loc[selection.value - 2011],
+                dx: dec_text_x_loc[selection.value - 2011]  
+                }
+            ];
+          
+            makeLowestAnnotation = d3.annotation().annotations(highestDecreaseAnnotate);
+ 
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+                .call(makeLowestAnnotation);
+    
+
+         });
+      
+        selector.selectAll("option")
+        .data(elements)
+        .enter().append("option")
+        .attr("value", function(d){
+            return d;
+        })
+        .text(function(d){
+            return d;
+        });
+    
+
+};
+
+async function loadData(selectedYear, data){
+    total_labor_force_change = [];
+    data_year_2 = await data.filter(function(d) {
+                        return d.Year == selectedYear; 
+            });
+
+    for(let i = 0; i < data_state_2.length; i++){
+        total_labor_force_change[i] = await d3.sum(data_year_2, 
+        function(d) { 
+            if (d.State == data_state_2[i]) {
+               // console.log(d.LaborForce);
+                return d.LaborForceChange; 
+            }
+        }); 
+    }
+    return total_labor_force_change;
+};
+
+async function loadStateData(selectedState, data){
+    total_labor_force = [];
+    selectedYear = 2021;
+    
+    data_state = await data.filter(function(d) {
+            return d.State == selectedState; 
+    });
+
+    for(let i = 2010; i <= selectedYear; i++){
+        //data_year[i - 2010] = i;  
+        total_labor_force[i - 2010] = await d3.sum(data_state, 
+                function(d) { 
+                    if (d.Year == i) {
+                       // console.log(d.LaborForce);
+                        return d.LaborForce; 
+                    }
+                }); 
+        }
+    return total_labor_force;
+};
+
+async function loadUnemploymentRate(selectedYear, data){
+    unemploymentRate = [];
+    
+    data_state = await data.filter(function(d) {
+            return d.Year == selectedYear; ; 
+    });
+
+    for(let i = 0; i < data_state_2.length ; i++){
+        unemploymentRate[i] = await d3.mean(data_state, 
+                function(d) { 
+                    if (d.State == data_state_2[i]) {
+                       // console.log(d.LaborForce);
+                        return d.UnemploymentRate; 
+                    }
+                }); 
+        }
+    return unemploymentRate;
+};
+
+async function findIndex(arrayData, findType){
+    if (findType == "max"){
+        for (i = 0; i <= arrayData.length; i++){
+            if (arrayData[i]== d3.max(arrayData)){
+                return i; 
+                break;
+            }
+        }
+    }
+    else {
+        for (i = 0; i <= arrayData.length; i++){
+            if (arrayData[i]== d3.min(arrayData)){
+                return i; 
+                break;
+            }
+        }
+    };
+
+    };  
+
+async function showLineChart() {
+        svg.selectAll('*').remove();
+        selector.selectAll('*').remove();
+
+        selectedYear = 2021;    
+        state_selected = "CA";
+
+        svg.append("text")
+            .attr("transform", "translate(100,0)")
+            .attr("x", 50)
+            .attr("y", 50)
+            .attr("font-size", "24px")
+            .text("Labor Force Change Trend from 2010-2021 for State - " + state_selected);
+    
+        var xScale = d3.scaleBand().range([0, width]),
+            yScale = d3.scaleLinear().range([height, 0]);
+    
+   
+        data = await d3.csv("https://raw.githubusercontent.com/san2ds/san2ds.github.io/main/laucnty21_10.csv")
+    
+        if (!data) {
+            error = "Error in file read";
+            console.log(error);
+            throw error;
+        }
+    
+    //console.log(data);    
+    
+    
+    
+    //console.log(data_state);
+        var data_year = [];
+
+        for(let i = 2010; i <= selectedYear; i++){
+            data_year[i - 2010] = i;  
+        };
+
+        var total_labor_force = await loadStateData(state_selected, data);
+
+        xScale.domain(data_year);
+        yScale.domain([d3.min(total_labor_force)*0.8, d3.max(total_labor_force)*1.2]);
+
+        //console.log(data_year);
+        
+
+
+        svg.append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")")       
+         .call(d3.axisLeft(yScale).tickFormat(function(d){
+             return  d;
+         })
+         .ticks(10)
+         .tickFormat(d3.format("~s")))
+         .append("text")
+         .attr("transform", "rotate(-90)")
+         .attr("y", 3)
+         .attr("dy", "-5.1em")
+         .attr("text-anchor", "end")
+         .attr("stroke", "black")
+         .text("Total Labor Force");
+
+   
+       
+
+        svg.append("g")
+               .attr("transform", "translate("+ margin.left +", "+ 420 +")")
+         .call(d3.axisBottom(xScale));
+        
+         svg.append("g")
+               .attr("transform", "translate(" + margin.left + "," + margin.bottom + ")")
+            .append("path")
+             .datum(total_labor_force)
+            .transition()
+            .duration(1000)
+            .delay(100)
+             .attr("fill", "none")
+             .attr("stroke", "steelblue")
+             .attr("stroke-width", 1.5)
+             .attr("d", d3.line()
+                .x(function(d,i) { return xScale(data_year[i]) })
+                .y(function(d) { return yScale(d) })
+            );
+    
+
+        var idx =  await findIndex(total_labor_force, "max");
+     
+     
+        var highestIncreaseAnnotate = [
+            {
+             note: {
+                 label: "Labor Force for State " + state_selected + " reached to " + d3.max(total_labor_force) + " on year " + data_year[idx] + ".",
+                 title: "Highest Labor Force"
+            },
+             connector: {
+                 end: "arrow",
+                 type: "curve",
+                 points: 3,
+                 lineType: "horizontal"
+             },
+             color: ["green"],
+             x: xScale(data_year[idx]),
+             y: yScale(d3.max(total_labor_force)),
+             dy: 60,
+             dx: 150  
+         }
+     ];
+          
+     var makeHighestAnnotation = d3.annotation().annotations(highestIncreaseAnnotate);
+ 
+     svg.append("g")
+         .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+         .call(makeHighestAnnotation);
+ 
+     var idx =  await findIndex(total_labor_force, "min");
+      
+     var highestDecreaseAnnotate = [
+          {
+              note: {
+                  label: "Labor Force for State " + state_selected + " reached to " + d3.min(total_labor_force) + " on year " + data_year[idx] + ".",
+                  title: "Lowest Labor Force"
+             },
+              connector: {
+                  end: "arrow",
+                  type: "curve",
+                  points: 3,
+                  lineType: "horizontal"
+              },
+              color: ["red"],
+              x: xScale(data_year[idx]),
+              y: yScale(d3.min(total_labor_force)),
+              dy: -60,
+              dx: 50  
+          }
+      ];
+           
+      var makeLowestAnnotation = d3.annotation().annotations(highestDecreaseAnnotate);
+  
+      svg.append("g")
+          .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+          .call(makeLowestAnnotation);
+  
+            
+       // Dropdown selector value change      
+      
+       selector.on("change", async function(d){
+        	selection = document.getElementById("dropdown");
+            new_labor_force = await loadStateData(selection.value, data);
+            //console.log(new_labor_force);
+            svg.selectAll('*').remove();
+
+    
+            svg.append("text")
+                .attr("transform", "translate(100,0)")
+                .attr("x", 60)
+                .attr("y", 50)
+                .attr("font-size", "24px")
+                .text("Labor Force Change Trend from 2010-2021 for State - " + selection.value);
+    
+            yScale.domain([d3.min(new_labor_force)*0.8, d3.max(new_labor_force)*1.2]);
+
+        
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")")       
+                .call(d3.axisLeft(yScale).tickFormat(function(d){
+                     return  d;
+                    })
+                 .ticks(10)
+                 .tickFormat(d3.format("~s")))
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 3)
+                .attr("dy", "-5.1em")
+                .attr("text-anchor", "end")
+                .attr("stroke", "black")
+                .text("Total Labor Force");
+
+   
+
+            svg.append("g")
+               .attr("transform", "translate("+ margin.left +", "+ 420 +")")
+                 .call(d3.axisBottom(xScale));
+         
+          
+            svg.append("g")
+               .attr("transform", "translate(" + margin.left + "," + margin.bottom + ")")
+                .append("path")
+                 .datum(new_labor_force)
+                 .transition()
+                 .duration(1000)
+                 .delay(100)
+                 .attr("fill", "none")
+                 .attr("stroke", "steelblue")
+                 .attr("stroke-width", 1.5)
+                 .attr("d", d3.line()
+                 .x(function(d,i) { return xScale(data_year[i]) })
+                 .y(function(d) { return yScale(d) })
+                );        
+                 
+
+            var idx_n =  await findIndex(new_labor_force, "max");
+     
+     
+            highestIncreaseAnnotate = [
+                {
+                note: {
+                    label: "Labor Force for State " + selection.value + " reached to " + d3.max(new_labor_force) + " on year " + data_year[idx_n] + ".",
+                    title: "Highest Labor Force"
+                },
+                connector: {
+                    end: "arrow",
+                    type: "curve",
+                    points: 3,
+                    lineType: "horizontal"
+                },
+                color: ["green"],
+                x: xScale(data_year[idx_n]),
+                y: yScale(d3.max(new_labor_force)),
+                dy: 60,
+                dx: 100  
+                }
+            ];
+       
+            makeHighestAnnotation = d3.annotation().annotations(highestIncreaseAnnotate);
+
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+                .call(makeHighestAnnotation);
+
+            idx_n =  await findIndex(new_labor_force, "min");
+   
+            highestDecreaseAnnotate = [
+                {
+                note: {
+                    label: "Labor Force for State " + selection.value + " reached to " + d3.min(new_labor_force) + " on year " + data_year[idx_n] + ".",
+                    title: "Lowest Labor Force"
+                },
+                connector: {
+                    end: "arrow",
+                    type: "curve",
+                    points: 3,
+                    lineType: "horizontal"
+                },
+                color: ["red"],
+                x: xScale(data_year[idx_n]),
+                y: yScale(d3.min(new_labor_force)),
+                dy: -60,
+                dx: 50  
+                }
+            ];
+        
+            makeLowestAnnotation = d3.annotation().annotations(highestDecreaseAnnotate);
+
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+                .call(makeLowestAnnotation);
+           
+
+         });
+      
+        selector.selectAll("option")
+        .data(data_state_2)
+        .enter().append("option")
+        .attr("value", function(d){
+            return d;
+        })
+        .text(function(d){
+            return d;
+        });
+        
+};
+
+async function showScatterPlot() {
+        svg.selectAll('*').remove();
+        selector.selectAll('*').remove();
+        selectedYear = 2021;
+
+        svg.append("text")
+            .attr("transform", "translate(100,0)")
+            .attr("x", 50)
+            .attr("y", 50)
+            .attr("font-size", "24px")
+            .text("Unemployment Rate By Year - " + selectedYear);
+    
+        var xScale = d3.scaleBand().range([0, width]).padding(0.6),
+            yScale = d3.scaleLinear().range([height, 0]);
+    
+   
+        data = await d3.csv("https://raw.githubusercontent.com/san2ds/san2ds.github.io/main/laucnty21_10.csv")
+    
+        if (!data) {
+            error = "Error in file read";
+            console.log(error);
             throw error;
         }
 
-        state_selected = "CA"
-        data_state = data.filter(function(d) {
-            return d.State == state_selected; 
-        })
+
+        var unemploymentRate_state = await loadUnemploymentRate(selectedYear, data);
+
+        xScale.domain(data_state_2);
+        yScale.domain([0, d3.max(unemploymentRate_state)*1.4]);
         
-        xScale.domain(data_state.map(function(d) { return d.Year; }));
-        yScale.domain([0, d3.max(data_state, function(d) { return d.Labor_Force; })]);
+        var tooltip = d3.select("#Labor_force_viz")
+                    .append("div")
+                    .style("opacity", 0)
+                    .attr("class", "tooltip")
+                    .style("background-color", "white")
+                    .style("border", "solid")
+                    .style("border-width", "1px")
+                    .style("border-radius", "5px")
+                    .style("padding", "5px");
+        
+        // A function that change this tooltip when the user hover a point.
+        // Its opacity is set to 1: we can now see it. Plus it set the text and position of tooltip depending on the datapoint (d)
+        var mouseover = function(d) {
+                    tooltip
+                        .style("opacity", 1);
+        };
 
+        var mousemove = function(d,i) {
+                    //console.log(d3.event);
+                    var x = d3.event.pageX,
+                          y = d3.event.pageY; 
+                    tooltip
+                        .html("Unemployment Rate of state " + data_state_2[i] + " is: " + d3.format(".2f")(d) + ".")
+                        .style("left", (d3.event.pageX + 16) + "px") // It is important to put the +90: other wise the tooltip is exactly where the point is an it creates a weird effect
+                        .style("top", (d3.event.pageY + 16) + "px")
+                  //      .attr("transform", "translate(" + x + "," + y + ")")
+        }; 
 
-        g.append("g")
-         .attr("transform", "translate(0," + height + ")")
-         .call(d3.axisBottom(xScale))
-         .append("text")
-         .attr("y", height - 250)
-         .attr("x", width - 100)
-         .attr("text-anchor", "end")
-         .attr("stroke", "black")
-         .text("Year");
-
-        g.append("g")
+        // A function that change this tooltip when the leaves a point: just need to set opacity to 0 again
+        var mouseleave = function(d) {
+                    tooltip
+                        .transition()
+                        .duration(200)
+                        .style("opacity", 0)
+        };
+        
+        svg.append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")")       
          .call(d3.axisLeft(yScale).tickFormat(function(d){
              return  d;
          })
          .ticks(10))
          .append("text")
          .attr("transform", "rotate(-90)")
-         .attr("y", 6)
+         .attr("y", 3)
          .attr("dy", "-5.1em")
          .attr("text-anchor", "end")
          .attr("stroke", "black")
-         .text("Total Labor Force");
+         .text("Unemployment Rate");
 
-       /*
-         g.selectAll()
-         .data(data_state)
-         .enter().append("path")
-         //.attr("class", "bar")
-         .attr("x", function(d) { return xScale(d.Year); })
-         .attr("y", function(d) { return yScale(d.value); })
-         .attr("width", xScale.bandwidth())
-         .attr("height", function(d) { return height - yScale(d.value); });
-        */
+        svg.append("g")
+               .attr("transform", "translate("+ margin.left +", "+ 420 +")")
+         .call(d3.axisBottom(xScale));
+        
+        
+
+
+        svg.append("g")
+               .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+               .selectAll("dot")
+               .data(unemploymentRate_state)
+               .enter().append("circle")
+               .attr("cx", function(d,i) { return xScale(data_state_2[i]);})
+               .attr("cy", function(d) {return yScale(d);})
+               .attr("r", 4 )
+               .attr("fill","blue")
+               //.transition()
+               //.duration(1000)
+               //.delay(100)
+               .style("opacity", 0.3)
+               .style("stroke", "white")
+                .on("mouseover", mouseover )
+                .on("mousemove", mousemove)
+                .on("mouseout", mouseleave);
+        
+               
+  
+        
        
-         svg
-            .append("path")
-            .datum(data_state)
-            .attr("fill", "none")
-            .attr("stroke", "steelblue")
-            .attr("stroke-width", 1.5)
-            .attr("d", d3.line()
-                .x(function(d) { return x(d.Year) })
-                .y(function(d) { return y(d.Labor_Force) })
-            );
-        }
-    );
+    
+        var idx =  await findIndex(unemploymentRate_state, "max");
+     
+     
+        var highestIncreaseAnnotate = [
+            {
+                note: {
+                    label: "State " + data_state_2[idx] + " has highest unemployment rate " + d3.format(".2f")(d3.max(unemploymentRate_state)) + " on year " + selectedYear + ".",
+                    title: "Highest Unemployment Rate"
+                },
+                connector: {
+                    end: "arrow",
+                    type: "curve",
+                    points: 3,
+                    lineType: "horizontal"
+                },
+                color: ["red"],
+                x: xScale(data_state_2[idx]),
+                y: yScale(d3.max(unemploymentRate_state)),
+                dy: 60,
+                dx: -50  
+            }
+        ];
+       
+        var makeHighestAnnotation = d3.annotation().annotations(highestIncreaseAnnotate);
 
+        svg.append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+            .call(makeHighestAnnotation);
+
+        idx =  await findIndex(unemploymentRate_state, "min");
+   
+        var highestDecreaseAnnotate = [
+            {
+                note: {
+                    label: "State " + data_state_2[idx] + " has lowest unemployment rate " + d3.format(".2f")(d3.min(unemploymentRate_state)) + " on year " + selectedYear + ".",
+                    title: "Lowest Unemployment Rate"
+                },
+                connector: {
+                    end: "arrow",
+                    type: "curve",
+                    points: 3,
+                    lineType: "horizontal"
+                },
+                color: ["green"],
+                x: xScale(data_state_2[idx]),
+                y: yScale(d3.min(unemploymentRate_state)),
+                dy: -10,
+                dx: 240  
+            }
+        ];
+        
+        var makeLowestAnnotation = d3.annotation().annotations(highestDecreaseAnnotate);
+
+        svg.append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+            .call(makeLowestAnnotation);
+
+    // Dropdown selector value change      
+      
+        selector.on("change", async function(d){
+        	selection = document.getElementById("dropdown");
+            new_unemploymentRate = await loadUnemploymentRate(selection.value, data);
+            //console.log(new_unemploymentRate);
+            svg.selectAll('*').remove();
+
+            svg.append("text")
+                .attr("transform", "translate(100,0)")
+                .attr("x", 50)
+                .attr("y", 50)
+                .attr("font-size", "24px")
+                .text("Unemployment Rate By Year - " + selection.value);
+            
+            yScale.domain([0, d3.max(new_unemploymentRate)*1.4]);
+
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")")       
+                .call(d3.axisLeft(yScale).tickFormat(function(d){
+                    return  d;
+                    })
+                .ticks(10))
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 3)
+                .attr("dy", "-5.1em")
+                .attr("text-anchor", "end")
+                .attr("stroke", "black")
+                .text("Unemployment Rate");
+
+            svg.append("g")
+               .attr("transform", "translate("+ margin.left +", "+ 420 +")")
+               .call(d3.axisBottom(xScale));
+
+            svg.append("g")
+               .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+               .selectAll("dot")
+               .data(new_unemploymentRate)
+               .enter().append("circle")
+               .attr("cx", function(d,i) { return xScale(data_state_2[i]);})
+               .attr("cy", function(d) {return yScale(d);})
+               .attr("r", 4 )
+               .attr("fill","blue")
+               .style("opacity", 0.3)
+               .style("stroke", "white")
+                .on("mouseover", mouseover )
+                .on("mousemove", mousemove)
+                .on("mouseout", mouseleave);
+               //.transition()
+              // .duration(1000)
+              // .delay(100);
+
+            var idx_n =  await findIndex(new_unemploymentRate, "max");
+     
+            var inc_text_x_loc = [-50,-50,-50,-300,-300,-300,-300,-300,-300,-50,-50];
+            var inc_text_y_loc = [60,60,60,60,60,60,60,60,60,60,60];
+
+            highestIncreaseAnnotate = [
+                {
+                note: {
+                    label: "State " + data_state_2[idx_n] + " has highest unemployment rate " + d3.format(".2f")(d3.max(new_unemploymentRate)) + " on year " + selection.value + ".",
+                    title: "Highest Unemployment Rate"
+                },
+                connector: {
+                    end: "arrow",
+                    type: "curve",
+                    points: 3,
+                    lineType: "horizontal"
+                },
+                color: ["red"],
+                x: xScale(data_state_2[idx_n]),
+                y: yScale(d3.max(new_unemploymentRate)),
+                dy: inc_text_y_loc[selection.value - 2011],
+                dx: inc_text_x_loc[selection.value - 2011]  
+                }
+            ];
+    
+            makeHighestAnnotation = d3.annotation().annotations(highestIncreaseAnnotate);
+
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+                .call(makeHighestAnnotation);
+
+            idx_n =  await findIndex(new_unemploymentRate, "min");
+
+            var dec_text_x_loc = [260,260,260,260,260,260,560,500,260,260,260];
+            var dec_text_y_loc = [-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10];
+
+            highestDecreaseAnnotate = [
+                {
+                note: {
+                     label: "State " + data_state_2[idx_n] + " has lowest unemployment rate " + d3.format(".2f")(d3.min(new_unemploymentRate)) + " on year " + selection.value + ".",
+                     title: "Lowest Unemployment Rate"
+                },
+                connector: {
+                     end: "arrow",
+                     type: "curve",
+                     points: 3,
+                     lineType: "horizontal"
+                },
+                color: ["green"],
+                x: xScale(data_state_2[idx_n]),
+                y: yScale(d3.min(new_unemploymentRate)),
+                dy: dec_text_y_loc[selection.value - 2011],
+                dx: dec_text_x_loc[selection.value - 2011]  
+                }
+            ];
+     
+            makeLowestAnnotation = d3.annotation().annotations(highestDecreaseAnnotate);
+
+            svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.bottom +")")
+                .call(makeLowestAnnotation);
+
+
+        });
+
+        selector.selectAll("option")
+                .data(elements)
+                .enter().append("option")
+                .attr("value", function(d){
+                    return d;
+                })
+                .text(function(d){
+                    return d;
+                });
+    
+    };
 
 </script>
+</body>
+</html>
